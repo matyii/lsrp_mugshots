@@ -91,6 +91,42 @@ local function GetCharacterIdentifier(src)
     return GetLicenseIdentifier(src)
 end
 
+local function NormalizeMugshotData(imageData, defaultMimeType)
+    if type(imageData) ~= 'string' or imageData == '' then
+        return nil
+    end
+
+    if imageData:match('^data:image/[%w%+%-%.]+;base64,') then
+        return imageData
+    end
+
+    return ('data:%s;base64,%s'):format(defaultMimeType or 'image/png', imageData)
+end
+
+local function SaveMugshot(src, identifier, mugshot)
+    if not identifier then
+        return false
+    end
+
+    if not mugshot or mugshot == '' then
+        return false
+    end
+
+    MySQL.query([[
+        INSERT INTO player_mugshots (identifier, mugshot)
+        VALUES (?, ?)
+        ON DUPLICATE KEY UPDATE mugshot = VALUES(mugshot)
+    ]], { identifier, mugshot }, function()
+        DebugPrint("^2Saved mugshot for " .. identifier .. "^7")
+
+        if src then
+            TriggerClientEvent('mugshot:saveConfirmed', src)
+        end
+    end)
+
+    return true
+end
+
 -- Save mugshot
 RegisterNetEvent("mugshot:save", function(mugshot)
     local src = source
@@ -101,16 +137,16 @@ RegisterNetEvent("mugshot:save", function(mugshot)
         return
     end
 
+    mugshot = NormalizeMugshotData(mugshot, 'image/png')
+
     if not mugshot then
         DebugPrint("^1No mugshot received from player " .. src .. "^7")
         return
     end
+
     DebugPrint("Received mugshot from player " .. src)
-    MySQL.query([[
-        INSERT INTO player_mugshots (identifier, mugshot)
-        VALUES (?, ?)
-        ON DUPLICATE KEY UPDATE mugshot = VALUES(mugshot)
-    ]], { identifier, mugshot }, function()
-        DebugPrint("^2Saved mugshot for " .. identifier .. "^7")
-    end)
+
+    if not SaveMugshot(src, identifier, mugshot) then
+        TriggerClientEvent('mugshot:saveFailed', src)
+    end
 end)
